@@ -2,22 +2,11 @@ import React from 'react';
 import clsx from 'clsx';
 import { format, parse, isBefore } from 'date-fns';
 
-interface TimeSlotPickerProps {
-  selectedSlot: string | null;
-  onSlotSelect: (slot: string) => void;
-  selectedDate: Date;
-}
-
-interface TimeSlot {
-  time: string;
-  rush: 'high' | 'medium' | 'low';
-}
-
-export function TimeSlotPicker({ selectedSlot, onSlotSelect, selectedDate }: TimeSlotPickerProps) {
-  // Generate time slots with 10-minute intervals
-  const generateTimeSlots = (): TimeSlot[] => {
-    const slots: TimeSlot[] = [];
-    const hours = [9, 10, 11, 12, 14, 15, 16, 17]; // 9 AM to 5 PM with lunch break
+export function TimeSlotPicker({ selectedSlot, onSlotSelect, selectedDate, rushStatus }) {
+  
+  const generateTimeSlots = () => {
+    const slots = [];
+    const hours = [9, 10, 11, 12, 14, 15, 16, 17]; 
     
     hours.forEach(hour => {
       [0, 10, 20, 30, 40, 50].forEach(minute => {
@@ -25,14 +14,19 @@ export function TimeSlotPicker({ selectedSlot, onSlotSelect, selectedDate }: Tim
         const ampm = hour >= 12 ? 'PM' : 'AM';
         const displayTime = `${hour > 12 ? hour - 12 : hour}:${minute.toString().padStart(2, '0')} ${ampm}`;
         
-        // Simulate rush status based on time
-        let rush: 'high' | 'medium' | 'low';
-        if (hour >= 9 && hour <= 11) {
-          rush = 'high'; // Morning rush
-        } else if ((hour >= 14 && hour <= 15) || hour === 12) {
-          rush = 'medium'; // Lunch and afternoon rush
+        
+        let rush;
+        if (rushStatus && rushStatus[displayTime]) {
+          rush = rushStatus[displayTime];
         } else {
-          rush = 'low';
+          
+          if (hour >= 9 && hour <= 11) {
+            rush = 'high'; 
+          } else if ((hour >= 14 && hour <= 15) || hour === 12) {
+            rush = 'medium'; 
+          } else {
+            rush = 'low';
+          }
         }
         
         slots.push({ time: displayTime, rush });
@@ -46,7 +40,7 @@ export function TimeSlotPicker({ selectedSlot, onSlotSelect, selectedDate }: Tim
   const now = new Date();
   const isToday = selectedDate.toDateString() === now.toDateString();
 
-  const isSlotDisabled = (slot: string): boolean => {
+  const isSlotDisabled = (slot) => {
     if (!isToday) return false;
     
     const slotTime = parse(slot, 'h:mm aa', new Date());
@@ -54,7 +48,7 @@ export function TimeSlotPicker({ selectedSlot, onSlotSelect, selectedDate }: Tim
     return isBefore(slotTime, now);
   };
 
-  const getRushColorClasses = (rush: 'high' | 'medium' | 'low', isDisabled: boolean) => {
+  const getRushColorClasses = (rush, isDisabled) => {
     if (isDisabled) {
       return 'bg-gray-200 text-gray-400 cursor-not-allowed';
     }

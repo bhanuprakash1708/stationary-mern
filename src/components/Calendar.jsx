@@ -4,14 +4,8 @@ import "react-datepicker/dist/react-datepicker.css";
 import { format } from 'date-fns';
 import clsx from 'clsx';
 
-interface CalendarProps {
-  selectedDate: Date;
-  onDateChange: (date: Date) => void;
-  rushStatus: Record<string, 'high' | 'medium' | 'low'>;
-}
-
-export function Calendar({ selectedDate, onDateChange, rushStatus }: CalendarProps) {
-  const renderDayContents = (day: number, date: Date) => {
+export function Calendar({ selectedDate, onDateChange, rushStatus }) {
+  const renderDayContents = (day, date) => {
     const dateKey = format(date, 'yyyy-MM-dd');
     const status = rushStatus[dateKey] || 'low';
     
@@ -35,7 +29,7 @@ export function Calendar({ selectedDate, onDateChange, rushStatus }: CalendarPro
     <div className="w-full max-w-md">
       <DatePicker
         selected={selectedDate}
-        onChange={(date: Date) => onDateChange(date)}
+        onChange={(date) => onDateChange(date)}
         inline
         renderDayContents={renderDayContents}
         minDate={new Date()}
