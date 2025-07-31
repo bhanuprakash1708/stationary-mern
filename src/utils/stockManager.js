@@ -1,26 +1,31 @@
 // Stock management utilities
 
-import { supabase, isSupabaseConfigured } from '../lib/supabase.js';
+import { mongodb, isMongoDBConfigured } from '../lib/mongodb.js';
 
 // Update stock quantities after an order is placed
 export const updateStockAfterOrder = async (orderItems) => {
-  if (!isSupabaseConfigured) {
+  if (!isMongoDBConfigured) {
     // In demo mode, we can't persist stock changes
     console.log('📦 Demo Mode: Stock would be reduced for:', orderItems);
     return { success: true, message: 'Stock updated (Demo Mode)' };
   }
 
   try {
+    const collection = await mongodb.collection('stationery_items');
+
     // Process each item in the order
     for (const item of orderItems) {
-      const { error } = await supabase.rpc('reduce_stock', {
-        item_id: item.id,
-        quantity_used: item.quantity
-      });
+      const result = await collection.updateOne(
+        { _id: item.id },
+        {
+          $inc: { stock_quantity: -item.quantity },
+          $max: { stock_quantity: 0 } // Ensure stock doesn't go below 0
+        }
+      );
 
-      if (error) {
-        console.error(`Error reducing stock for item ${item.id}:`, error);
-        throw error;
+      if (result.matchedCount === 0) {
+        console.error(`Item with id ${item.id} not found`);
+        throw new Error(`Item with id ${item.id} not found`);
       }
     }
 
@@ -33,27 +38,24 @@ export const updateStockAfterOrder = async (orderItems) => {
 
 // Check if items have sufficient stock before placing order
 export const validateStockAvailability = async (orderItems) => {
-  if (!isSupabaseConfigured) {
+  if (!isMongoDBConfigured) {
     // In demo mode, assume stock is available
     return { valid: true, message: 'Stock validation passed (Demo Mode)' };
   }
 
   try {
+    const collection = await mongodb.collection('stationery_items');
+
     // Get current stock levels for all items in the order
     const itemIds = orderItems.map(item => item.id);
-    const { data: currentStock, error } = await supabase
-      .from('stationery_items')
-      .select('id, name, stock_quantity')
-      .in('id', itemIds);
-
-    if (error) {
-      throw error;
-    }
+    const currentStock = await collection.find({
+      _id: { $in: itemIds }
+    }).toArray();
 
     // Check each item's availability
     const insufficientStock = [];
     for (const orderItem of orderItems) {
-      const stockItem = currentStock.find(stock => stock.id === orderItem.id);
+      const stockItem = currentStock.find(stock => stock._id.toString() === orderItem.id);
       if (!stockItem) {
         insufficientStock.push(`${orderItem.name}: Item not found`);
         continue;
@@ -83,7 +85,7 @@ export const validateStockAvailability = async (orderItems) => {
 
 // Get current stock levels for display
 export const getCurrentStockLevels = async (itemIds = null) => {
-  if (!isSupabaseConfigured) {
+  if (!isMongoDBConfigured) {
     // Return demo stock levels
     const demoStock = {
       1: 50, 2: 30, 3: 3, 4: 100, 5: 0, 6: 200, 7: 40, 8: 75
@@ -92,24 +94,21 @@ export const getCurrentStockLevels = async (itemIds = null) => {
   }
 
   try {
-    let query = supabase
-      .from('stationery_items')
-      .select('id, stock_quantity');
+    const collection = await mongodb.collection('stationery_items');
 
+    let query = {};
     if (itemIds) {
-      query = query.in('id', itemIds);
+      query = { _id: { $in: itemIds } };
     }
 
-    const { data, error } = await query;
-
-    if (error) {
-      throw error;
-    }
+    const data = await collection.find(query, {
+      projection: { _id: 1, stock_quantity: 1 }
+    }).toArray();
 
     // Convert to id -> stock_quantity mapping
     const stockMap = {};
     data.forEach(item => {
-      stockMap[item.id] = item.stock_quantity;
+      stockMap[item._id.toString()] = item.stock_quantity;
     });
 
     return { success: true, stock: stockMap };

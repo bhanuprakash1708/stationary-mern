@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase.js';
+import { mongodb, isMongoDBConfigured } from '../lib/mongodb.js';
 import { Calendar as CalendarIcon, Clock, User, Package, Trash2, Loader2, AlertCircle, Search, Filter, CreditCard, Banknote, CheckCircle, XCircle, Clock as ClockIcon, Hash } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatOrderNumber, searchOrderNumbers, ORDER_STATUS, getOrderStatusText, getOrderStatusColor } from '../utils/orderNumber.js';
@@ -24,7 +24,7 @@ export function OrdersManagement() {
     setError(null);
 
     try {
-      if (!isSupabaseConfigured) {
+      if (!isMongoDBConfigured) {
         // Demo data for orders with payment information and order numbers
         const demoOrders = [
           {
@@ -149,16 +149,16 @@ export function OrdersManagement() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const collection = await mongodb.collection('bookings');
+      const data = await collection.find({}).sort({ created_at: -1 }).toArray();
 
-      if (error) {
-        throw error;
-      }
+      // Convert MongoDB _id to id for compatibility
+      const ordersWithId = data.map(order => ({
+        ...order,
+        id: order._id.toString()
+      }));
 
-      setOrders(data || []);
+      setOrders(ordersWithId);
     } catch (err) {
       console.error('Error fetching orders:', err);
       setError('Failed to load orders. Please try again.');
@@ -172,7 +172,7 @@ export function OrdersManagement() {
       return;
     }
 
-    if (!isSupabaseConfigured) {
+    if (!isMongoDBConfigured) {
       // Demo mode - just remove from local state
       setOrders(orders.filter(order => order.id !== orderId));
       return;
@@ -180,13 +180,11 @@ export function OrdersManagement() {
 
     setDeleteLoading(orderId);
     try {
-      const { error } = await supabase
-        .from('bookings')
-        .delete()
-        .eq('id', orderId);
+      const collection = await mongodb.collection('bookings');
+      const result = await collection.deleteOne({ _id: orderId });
 
-      if (error) {
-        throw error;
+      if (result.deletedCount === 0) {
+        throw new Error('Order not found');
       }
 
       setOrders(orders.filter(order => order.id !== orderId));

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, Package, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase.js';
+import { mongodb, isMongoDBConfigured } from '../lib/mongodb.js';
 import { formatOrderNumber, getOrderStatusText, getOrderStatusColor, ORDER_STATUS } from '../utils/orderNumber.js';
 import { format } from 'date-fns';
 
@@ -21,7 +21,7 @@ export function OrderStatusCheck() {
     setOrderData(null);
 
     try {
-      if (!isSupabaseConfigured) {
+      if (!isMongoDBConfigured) {
         // Demo mode - simulate order lookup
         await new Promise(resolve => setTimeout(resolve, 1000));
         
@@ -87,23 +87,24 @@ export function OrderStatusCheck() {
         return;
       }
 
-      // Real Supabase lookup
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('*')
-        .eq('order_number', orderNumber.trim())
-        .single();
+      // Real MongoDB lookup
+      const collection = await mongodb.collection('bookings');
+      const data = await collection.findOne({
+        order_number: orderNumber.trim()
+      });
 
-      if (error) {
-        if (error.code === 'PGRST116') {
-          setError('Order not found. Please check your order number and try again.');
-        } else {
-          throw error;
-        }
+      if (!data) {
+        setError('Order not found. Please check your order number and try again.');
         return;
       }
 
-      setOrderData(data);
+      // Convert MongoDB _id to id for compatibility
+      const orderWithId = {
+        ...data,
+        id: data._id.toString()
+      };
+
+      setOrderData(orderWithId);
 
     } catch (err) {
       console.error('Error searching for order:', err);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Plus, Minus, Save, Loader2, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase.js';
+import { mongodb, isMongoDBConfigured } from '../lib/mongodb.js';
 
 export function StockManagement() {
   const [items, setItems] = useState([]);
@@ -23,32 +23,32 @@ export function StockManagement() {
     setError(null);
 
     try {
-      if (!isSupabaseConfigured) {
+      if (!isMongoDBConfigured) {
         // Demo data
         const demoItems = [
-          { id: 1, name: 'Notebook', price: 25.99, stock_quantity: 50 },
-          { id: 2, name: 'Pen Set', price: 15.50, stock_quantity: 30 },
-          { id: 3, name: 'Highlighters', price: 12.00, stock_quantity: 3 },
-          { id: 4, name: 'Sticky Notes', price: 8.75, stock_quantity: 100 },
-          { id: 5, name: 'Stapler', price: 22.00, stock_quantity: 0 },
-          { id: 6, name: 'Paper Clips', price: 5.25, stock_quantity: 200 },
-          { id: 7, name: 'Ruler', price: 7.50, stock_quantity: 40 },
-          { id: 8, name: 'Eraser', price: 3.00, stock_quantity: 75 }
+          { _id: '1', name: 'Notebook', price: 25.99, stock_quantity: 50 },
+          { _id: '2', name: 'Pen Set', price: 15.50, stock_quantity: 30 },
+          { _id: '3', name: 'Highlighters', price: 12.00, stock_quantity: 3 },
+          { _id: '4', name: 'Sticky Notes', price: 8.75, stock_quantity: 100 },
+          { _id: '5', name: 'Stapler', price: 22.00, stock_quantity: 0 },
+          { _id: '6', name: 'Paper Clips', price: 5.25, stock_quantity: 200 },
+          { _id: '7', name: 'Ruler', price: 7.50, stock_quantity: 40 },
+          { _id: '8', name: 'Eraser', price: 3.00, stock_quantity: 75 }
         ];
         setItems(demoItems);
         return;
       }
 
-      const { data, error } = await supabase
-        .from('stationery_items')
-        .select('*')
-        .order('name');
+      const collection = await mongodb.collection('stationery_items');
+      const data = await collection.find({}).sort({ name: 1 }).toArray();
 
-      if (error) {
-        throw error;
-      }
+      // Convert MongoDB _id to id for compatibility
+      const itemsWithId = data.map(item => ({
+        ...item,
+        id: item._id.toString()
+      }));
 
-      setItems(data || []);
+      setItems(itemsWithId);
     } catch (err) {
       console.error('Error fetching items:', err);
       setError('Failed to load items. Please try again.');

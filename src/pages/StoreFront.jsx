@@ -7,7 +7,7 @@ import { OrderStatusCheck } from '../components/OrderStatusCheck.jsx';
 
 
 import { ShoppingCart, Settings, Loader2, AlertCircle, Info, Package } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase.js';
+import { mongodb, isMongoDBConfigured } from '../lib/mongodb.js';
 import { useNavigate } from 'react-router-dom';
 import { loadRazorpayScript } from '../utils/razorpay.js';
 import { generateOrderNumber, formatOrderNumber, ORDER_STATUS } from '../utils/orderNumber.js';
@@ -56,37 +56,41 @@ export function StoreFront() {
   }, [selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchItems = async () => {
-    if (!isSupabaseConfigured) {
-      // Demo data when Supabase is not configured
+    if (!isMongoDBConfigured) {
+      // Demo data when MongoDB is not configured
       const demoItems = [
-        { id: 1, name: 'Notebook', price: 25.99, stock_quantity: 50 },
-        { id: 2, name: 'Pen Set', price: 15.50, stock_quantity: 30 },
-        { id: 3, name: 'Highlighters', price: 12.00, stock_quantity: 3 }, // Low stock example
-        { id: 4, name: 'Sticky Notes', price: 8.75, stock_quantity: 100 },
-        { id: 5, name: 'Stapler', price: 22.00, stock_quantity: 0 }, // Out of stock example
-        { id: 6, name: 'Paper Clips', price: 5.25, stock_quantity: 200 },
-        { id: 7, name: 'Ruler', price: 7.50, stock_quantity: 40 },
-        { id: 8, name: 'Eraser', price: 3.00, stock_quantity: 75 }
+        { _id: '1', name: 'Notebook', price: 25.99, stock_quantity: 50 },
+        { _id: '2', name: 'Pen Set', price: 15.50, stock_quantity: 30 },
+        { _id: '3', name: 'Highlighters', price: 12.00, stock_quantity: 3 }, // Low stock example
+        { _id: '4', name: 'Sticky Notes', price: 8.75, stock_quantity: 100 },
+        { _id: '5', name: 'Stapler', price: 22.00, stock_quantity: 0 }, // Out of stock example
+        { _id: '6', name: 'Paper Clips', price: 5.25, stock_quantity: 200 },
+        { _id: '7', name: 'Ruler', price: 7.50, stock_quantity: 40 },
+        { _id: '8', name: 'Eraser', price: 3.00, stock_quantity: 75 }
       ];
       setItems(demoItems);
       return;
     }
 
-    const { data, error } = await supabase
-      .from('stationery_items')
-      .select('*')
-      .order('name');
+    try {
+      const collection = await mongodb.collection('stationery_items');
+      const data = await collection.find({}).sort({ name: 1 }).toArray();
 
-    if (error) {
+      // Convert MongoDB _id to id for compatibility
+      const itemsWithId = data.map(item => ({
+        ...item,
+        id: item._id.toString()
+      }));
+
+      setItems(itemsWithId);
+    } catch (error) {
       console.error('Error fetching items:', error);
       throw error;
     }
-
-    setItems(data || []);
   };
 
   const fetchRushStatus = async () => {
-    if (!isSupabaseConfigured) {
+    if (!isMongoDBConfigured) {
       // Demo rush status data with time slots
       const demoRushStatus = {
         '9:00 AM': 'high',
@@ -103,15 +107,8 @@ export function StoreFront() {
     }
 
     const selectedDateStr = selectedDate.toISOString().split('T')[0];
-    const { data, error } = await supabase
-      .from('rush_status')
-      .select('*')
-      .eq('date', selectedDateStr);
-
-    if (error) {
-      console.error('Error fetching rush status:', error);
-      throw error;
-    }
+    const collection = await mongodb.collection('rush_status');
+    const data = await collection.find({ date: selectedDateStr }).toArray();
 
     // Convert to time slot -> status mapping
     const statusMap = (data || []).reduce((acc, curr) => {
@@ -196,7 +193,7 @@ export function StoreFront() {
       const orderNumber = generateOrderNumber();
       const formattedOrderNumber = formatOrderNumber(orderNumber);
 
-      if (!isSupabaseConfigured) {
+      if (!isMongoDBConfigured) {
         // Demo mode - simulate booking with order number
         await new Promise(resolve => setTimeout(resolve, 1000));
         setShowPaymentModal(false);
@@ -204,7 +201,7 @@ export function StoreFront() {
         const paymentMethod = paymentResult.method === 'online' ? 'Online Payment' : 'Cash on Delivery';
         const paymentStatus = paymentResult.status === 'completed' ? 'Successful' : 'Pending';
 
-        alert(`✅ Booking Confirmed!\n\nOrder Number: ${formattedOrderNumber}\nCustomer: ${pendingBookingData.customer_name}\nDate: ${selectedDate.toLocaleDateString()}\nTime: ${selectedSlot}\nTotal: ₹${totalCost.toFixed(2)}\nPayment: ${paymentMethod} (${paymentStatus})\n\n📝 Please save your order number for future reference.\n\nNote: This is a demo. Configure Supabase to enable real bookings.`);
+        alert(`✅ Booking Confirmed!\n\nOrder Number: ${formattedOrderNumber}\nCustomer: ${pendingBookingData.customer_name}\nDate: ${selectedDate.toLocaleDateString()}\nTime: ${selectedSlot}\nTotal: ₹${totalCost.toFixed(2)}\nPayment: ${paymentMethod} (${paymentStatus})\n\n📝 Please save your order number for future reference.\n\nNote: This is a demo. Configure MongoDB to enable real bookings.`);
 
         // In demo mode, simulate stock reduction by updating local state
         setItems(prevItems =>
@@ -241,22 +238,20 @@ export function StoreFront() {
         payment_completed_at: paymentResult.status === 'completed' ? new Date().toISOString() : null
       };
 
-      console.log('📤 Sending booking data to Supabase:', completeBookingData);
+      console.log('📤 Sending booking data to MongoDB:', completeBookingData);
 
-      const { data, error } = await supabase
-        .from('bookings')
-        .insert(completeBookingData)
-        .select();
+      const collection = await mongodb.collection('bookings');
+      const result = await collection.insertOne({
+        ...completeBookingData,
+        created_at: new Date()
+      });
 
-      if (error) {
-        console.error('❌ Supabase error details:', error);
-        console.error('❌ Error message:', error.message);
-        console.error('❌ Error details:', error.details);
-        console.error('❌ Error hint:', error.hint);
-        throw error;
+      if (!result.insertedId) {
+        throw new Error('Failed to insert booking');
       }
 
-      console.log('📥 Received booking response from Supabase:', data);
+      const insertedBooking = await collection.findOne({ _id: result.insertedId });
+      console.log('📥 Received booking response from MongoDB:', insertedBooking);
 
       // Update stock quantities after successful booking
       console.log('📦 Updating stock quantities...');
@@ -399,7 +394,7 @@ export function StoreFront() {
         </div>
       </header>
 
-      {!isSupabaseConfigured && (
+      {!isMongoDBConfigured && (
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
           <div className="max-w-7xl mx-auto flex">
             <div className="flex">
@@ -408,8 +403,8 @@ export function StoreFront() {
               </div>
               <div className="ml-3">
                 <p className="text-sm text-blue-700">
-                  <strong>Demo Mode:</strong> Supabase is not configured. The app is running with mock data.
-                  To enable full functionality, please set your Supabase credentials in <code className="bg-blue-100 px-1 rounded">.env.local</code>
+                  <strong>Demo Mode:</strong> MongoDB is not configured. The app is running with mock data.
+                  To enable full functionality, please set your MongoDB credentials in <code className="bg-blue-100 px-1 rounded">.env.local</code>
                 </p>
               </div>
             </div>

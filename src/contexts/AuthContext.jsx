@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase.js';
+import { mongodb } from '../lib/mongodb.js';
 
 const AuthContext = createContext(null);
 
@@ -10,7 +10,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const getInitialSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const { data: { session }, error } = await mongodb.auth.getSession();
         if (error) {
           console.error('Error getting session:', error);
         }
@@ -25,7 +25,7 @@ export function AuthProvider({ children }) {
 
     getInitialSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = mongodb.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session);
       setLoading(false);
     });
@@ -36,7 +36,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error } = await mongodb.auth.signInWithPassword({
         email,
         password,
       });
@@ -49,7 +49,7 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await mongodb.auth.signOut();
       if (error) throw error;
     } finally {
       setLoading(false);

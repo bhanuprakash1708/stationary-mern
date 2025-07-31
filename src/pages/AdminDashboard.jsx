@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
-import { supabase, isSupabaseConfigured } from '../lib/supabase.js';
+import { mongodb, isMongoDBConfigured } from '../lib/mongodb.js';
 import { Plus, Trash, LogOut, Clock, Package, Calendar as CalendarIcon, Loader2, AlertCircle, Info, ShoppingBag, Archive } from 'lucide-react';
 import { format } from 'date-fns';
 import { TimeSlotGrid } from '../components/TimeSlotGrid.jsx';
@@ -39,29 +39,32 @@ export function AdminDashboard() {
 
   const fetchItems = async () => {
     try {
-      if (!isSupabaseConfigured) {
+      if (!isMongoDBConfigured) {
         // Demo data for admin dashboard
         const demoItems = [
-          { id: 1, name: 'Notebook', price: 25.99, stock_quantity: 50 },
-          { id: 2, name: 'Pen Set', price: 15.50, stock_quantity: 30 },
-          { id: 3, name: 'Highlighters', price: 12.00, stock_quantity: 3 },
-          { id: 4, name: 'Sticky Notes', price: 8.75, stock_quantity: 100 },
-          { id: 5, name: 'Stapler', price: 22.00, stock_quantity: 0 },
-          { id: 6, name: 'Paper Clips', price: 5.25, stock_quantity: 200 },
-          { id: 7, name: 'Ruler', price: 7.50, stock_quantity: 40 },
-          { id: 8, name: 'Eraser', price: 3.00, stock_quantity: 75 }
+          { _id: '1', name: 'Notebook', price: 25.99, stock_quantity: 50 },
+          { _id: '2', name: 'Pen Set', price: 15.50, stock_quantity: 30 },
+          { _id: '3', name: 'Highlighters', price: 12.00, stock_quantity: 3 },
+          { _id: '4', name: 'Sticky Notes', price: 8.75, stock_quantity: 100 },
+          { _id: '5', name: 'Stapler', price: 22.00, stock_quantity: 0 },
+          { _id: '6', name: 'Paper Clips', price: 5.25, stock_quantity: 200 },
+          { _id: '7', name: 'Ruler', price: 7.50, stock_quantity: 40 },
+          { _id: '8', name: 'Eraser', price: 3.00, stock_quantity: 75 }
         ];
         setItems(demoItems);
         return;
       }
 
-      const { data, error } = await supabase
-        .from('stationery_items')
-        .select('*')
-        .order('name');
+      const collection = await mongodb.collection('stationery_items');
+      const data = await collection.find({}).sort({ name: 1 }).toArray();
 
-      if (error) throw error;
-      setItems(data || []);
+      // Convert MongoDB _id to id for compatibility
+      const itemsWithId = data.map(item => ({
+        ...item,
+        id: item._id.toString()
+      }));
+
+      setItems(itemsWithId);
     } catch (error) {
       console.error('Error fetching items:', error);
       throw error;
@@ -70,7 +73,7 @@ export function AdminDashboard() {
 
   const fetchRushStatuses = async () => {
     try {
-      if (!isSupabaseConfigured) {
+      if (!isMongoDBConfigured) {
         // Demo data for rush statuses
         const demoStatuses = {
           [`${format(selectedDate, 'yyyy-MM-dd')}_9:00 AM`]: 'high',
@@ -81,16 +84,14 @@ export function AdminDashboard() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('rush_status')
-        .select('*')
-        .eq('date', format(selectedDate, 'yyyy-MM-dd'));
-
-      if (error) throw error;
+      const collection = await mongodb.collection('rush_status');
+      const data = await collection.find({
+        date: format(selectedDate, 'yyyy-MM-dd')
+      }).toArray();
 
       // Convert to date_timeSlot -> status mapping for TimeSlotGrid
       const statusMap = {};
-      data?.forEach(status => {
+      data.forEach(status => {
         const key = `${status.date}_${status.time_slot}`;
         statusMap[key] = status.status;
       });
@@ -154,7 +155,7 @@ export function AdminDashboard() {
   const handleRushStatusChange = async (date, timeSlot, status) => {
     setRushLoading(true);
     try {
-      if (!isSupabaseConfigured) {
+      if (!isMongoDBConfigured) {
         // Demo mode - just update local state
         const key = `${date}_${timeSlot}`;
         setRushStatusMap(prev => ({
@@ -164,15 +165,19 @@ export function AdminDashboard() {
         return;
       }
 
-      const { error } = await supabase
-        .from('rush_status')
-        .upsert({
-          date: date,
-          time_slot: timeSlot,
-          status: status
-        });
-
-      if (error) throw error;
+      const collection = await mongodb.collection('rush_status');
+      await collection.updateOne(
+        { date: date, time_slot: timeSlot },
+        {
+          $set: {
+            date: date,
+            time_slot: timeSlot,
+            status: status,
+            created_at: new Date()
+          }
+        },
+        { upsert: true }
+      );
 
       // Update local state immediately for better UX
       const key = `${date}_${timeSlot}`;
@@ -233,7 +238,7 @@ export function AdminDashboard() {
         </div>
       </header>
 
-      {!isSupabaseConfigured && (
+      {!isMongoDBConfigured && (
         <div className="bg-orange-50 border-l-4 border-orange-400 p-4">
           <div className="max-w-7xl mx-auto flex">
             <div className="flex">
@@ -242,7 +247,7 @@ export function AdminDashboard() {
               </div>
               <div className="ml-3">
                 <p className="text-sm text-orange-700">
-                  <strong>Demo Mode:</strong> Admin functions are limited. Configure Supabase in <code className="bg-orange-100 px-1 rounded">.env.local</code> to enable full admin functionality.
+                  <strong>Demo Mode:</strong> Admin functions are limited. Configure MongoDB in <code className="bg-orange-100 px-1 rounded">.env.local</code> to enable full admin functionality.
                 </p>
               </div>
             </div>
