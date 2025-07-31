@@ -238,5 +238,3 @@ For support and questions:
 - Review the troubleshooting section
 
 ---
-
-**Note**: This project does not include CI/CD pipeline configuration or license information as per requirements.
